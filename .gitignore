@@ -1,0 +1,22 @@
+# IDE directories
+.vscode/
+.idea/
+
+# Rust specific
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Debug files
+*.log
+*.tmp
+*.swp
