@@ -64,10 +64,17 @@ llm-streamliner = { version = "0.1", features = ["gzip"] }
 
 ## Benchmarks
 
-Coming soon! We'll provide performance metrics for:
-- Compression ratios
-- Compression/decompression speeds
-- Memory overhead
+Performance metrics available in [BENCHMARKS.md](BENCHMARKS.md):
+
+**Zlib Compression (1MB data)**
+- Avg time: ~1.7ms
+- Compression ratio: ~60% (varies by content)
+- Memory overhead: <1MB
+
+Run benchmarks locally:
+```bash
+cargo bench --features=benchmarks
+```
 
 ## Contributing
 
