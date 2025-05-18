@@ -1,0 +1,9 @@
+(function() {
+    var implementors = Object.fromEntries([["llm_streamliner",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.87.0/core/marker/trait.Freeze.html\" title=\"trait core::marker::Freeze\">Freeze</a> for <a class=\"enum\" href=\"llm_streamliner/enum.StreamlinerError.html\" title=\"enum llm_streamliner::StreamlinerError\">StreamlinerError</a>",1,["llm_streamliner::StreamlinerError"]],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.87.0/core/marker/trait.Freeze.html\" title=\"trait core::marker::Freeze\">Freeze</a> for <a class=\"struct\" href=\"llm_streamliner/compression/struct.ZlibCompressor.html\" title=\"struct llm_streamliner::compression::ZlibCompressor\">ZlibCompressor</a>",1,["llm_streamliner::compression::ZlibCompressor"]],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.87.0/core/marker/trait.Freeze.html\" title=\"trait core::marker::Freeze\">Freeze</a> for <a class=\"struct\" href=\"llm_streamliner/compression/struct.ZlibExpander.html\" title=\"struct llm_streamliner::compression::ZlibExpander\">ZlibExpander</a>",1,["llm_streamliner::compression::ZlibExpander"]],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.87.0/core/marker/trait.Freeze.html\" title=\"trait core::marker::Freeze\">Freeze</a> for <a class=\"struct\" href=\"llm_streamliner/struct.MemoryModule.html\" title=\"struct llm_streamliner::MemoryModule\">MemoryModule</a>",1,["llm_streamliner::MemoryModule"]]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":57,"fragment_lengths":[1403]}
