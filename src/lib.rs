@@ -1,10 +1,10 @@
 //! LLM-Streamliner: Incremental compression/expansion pipelines for LLM contexts
-//! 
+//!
 //! Provides traits and implementations for compressing LLM context into memory modules
 //! that can be efficiently stored and expanded when needed.
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use serde::{Serialize, Deserialize};
 
 pub mod compression;
 
@@ -29,7 +29,13 @@ pub trait Compressor {
     /// * `context` - The text context to compress
     /// # Returns
     /// Binary representation of the compressed text or error
-    async fn compress(&'async_trait self, context: &'async_trait str) -> Result<Vec<u8>, StreamlinerError>;
+    async fn compress(
+        &'async_trait self,
+        context: &'async_trait str,
+    ) -> Result<Vec<u8>, StreamlinerError>;
+
+    /// Identifies the compression algorithm used by this compressor
+    fn algorithm(&self) -> &'static str;
 }
 
 /// Trait for expanding binary representations back into text
@@ -40,7 +46,49 @@ pub trait Expander {
     /// * `compressed` - The compressed binary data
     /// # Returns
     /// The original text or error
-    async fn expand(&'async_trait self, compressed: &'async_trait [u8]) -> Result<String, StreamlinerError>;
+    async fn expand(
+        &'async_trait self,
+        compressed: &'async_trait [u8],
+    ) -> Result<String, StreamlinerError>;
+
+    /// Identifies the compression algorithm supported by this expander
+    fn algorithm(&self) -> &'static str;
+}
+
+/// Metadata describing a compressed memory module
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct MemoryMetadata {
+    /// Compression algorithm name (e.g., "zlib")
+    algorithm: String,
+    /// Schema version to support future evolution of the format
+    schema_version: u32,
+    /// Optional user-provided tags for discoverability
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    user_tags: Option<Vec<String>>,
+}
+
+impl MemoryMetadata {
+    pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+
+    pub fn new(algorithm: String, user_tags: Option<Vec<String>>) -> Self {
+        Self {
+            algorithm,
+            schema_version: Self::CURRENT_SCHEMA_VERSION,
+            user_tags,
+        }
+    }
+
+    pub fn algorithm(&self) -> &str {
+        &self.algorithm
+    }
+
+    pub fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+
+    pub fn user_tags(&self) -> Option<&[String]> {
+        self.user_tags.as_deref()
+    }
 }
 
 /// Compressed memory module containing context and metadata
@@ -49,21 +97,32 @@ pub struct MemoryModule {
     /// The compressed data bytes
     compressed_data: Vec<u8>,
     /// Metadata about the compression (algorithm, version, etc.)
-    metadata: String,
+    metadata: MemoryMetadata,
 }
 
 impl MemoryModule {
     /// Creates a new MemoryModule by compressing the given context
-    pub async fn new(context: &str, compressor: &impl Compressor) -> Result<Self, StreamlinerError> {
+    pub async fn new(
+        context: &str,
+        compressor: &impl Compressor,
+        user_tags: Option<Vec<String>>,
+    ) -> Result<Self, StreamlinerError> {
         let compressed_data = compressor.compress(context).await?;
         Ok(Self {
             compressed_data,
-            metadata: String::new(),
+            metadata: MemoryMetadata::new(compressor.algorithm().to_string(), user_tags),
         })
     }
 
     /// Expands the compressed data back into text
     pub async fn expand(&self, expander: &impl Expander) -> Result<String, StreamlinerError> {
+        if expander.algorithm() != self.metadata.algorithm {
+            return Err(StreamlinerError::ExpansionError(format!(
+                "Expander for '{}' cannot expand algorithm '{}'",
+                expander.algorithm(),
+                self.metadata.algorithm
+            )));
+        }
         expander.expand(&self.compressed_data).await
     }
 
@@ -78,12 +137,27 @@ impl MemoryModule {
     }
 
     /// Gets metadata about the compression
-    pub fn metadata(&self) -> &str {
+    pub fn metadata(&self) -> &MemoryMetadata {
         &self.metadata
     }
 
+    /// Gets the compression algorithm name
+    pub fn algorithm(&self) -> &str {
+        self.metadata.algorithm()
+    }
+
+    /// Gets the schema version number
+    pub fn schema_version(&self) -> u32 {
+        self.metadata.schema_version()
+    }
+
+    /// Gets the optional user tags
+    pub fn user_tags(&self) -> Option<&[String]> {
+        self.metadata.user_tags()
+    }
+
     /// Updates the metadata
-    pub fn set_metadata(&mut self, metadata: String) {
+    pub fn set_metadata(&mut self, metadata: MemoryMetadata) {
         self.metadata = metadata;
     }
 }
@@ -100,31 +174,60 @@ mod tests {
         let compressor = ZlibCompressor;
         let expander = ZlibExpander;
         let original = "This is a longer test string to verify zlib compression works properly";
-        
-        let module = MemoryModule::new(original, &compressor).await.unwrap();
+
+        let module = MemoryModule::new(original, &compressor, None)
+            .await
+            .unwrap();
         let expanded = module.expand(&expander).await.unwrap();
-        
+
         assert_eq!(original, expanded);
-        
+
+        assert_eq!(module.algorithm(), "zlib");
+        assert_eq!(
+            module.schema_version(),
+            MemoryMetadata::CURRENT_SCHEMA_VERSION
+        );
+        assert!(module.user_tags().is_none());
+
         // Verify serialization roundtrip
         let json = module.to_json().unwrap();
         let deserialized = MemoryModule::from_json(&json).unwrap();
+        assert_eq!(deserialized.algorithm(), "zlib");
+        assert_eq!(
+            deserialized.schema_version(),
+            MemoryMetadata::CURRENT_SCHEMA_VERSION
+        );
         let reexpanded = deserialized.expand(&expander).await.unwrap();
         assert_eq!(original, reexpanded);
     }
 
     #[async_trait::async_trait]
     impl Compressor for TestCompressor {
-        async fn compress(&'async_trait self, context: &'async_trait str) -> Result<Vec<u8>, StreamlinerError> {
+        async fn compress(
+            &'async_trait self,
+            context: &'async_trait str,
+        ) -> Result<Vec<u8>, StreamlinerError> {
             Ok(context.as_bytes().to_vec())
+        }
+
+        fn algorithm(&self) -> &'static str {
+            "identity"
         }
     }
 
     #[async_trait::async_trait]
     impl Expander for TestExpander {
-        async fn expand(&'async_trait self, compressed: &'async_trait [u8]) -> Result<String, StreamlinerError> {
-            String::from_utf8(compressed.to_vec())
-                .map_err(|e| StreamlinerError::ExpansionError(format!("UTF-8 conversion failed: {}", e)))
+        async fn expand(
+            &'async_trait self,
+            compressed: &'async_trait [u8],
+        ) -> Result<String, StreamlinerError> {
+            String::from_utf8(compressed.to_vec()).map_err(|e| {
+                StreamlinerError::ExpansionError(format!("UTF-8 conversion failed: {}", e))
+            })
+        }
+
+        fn algorithm(&self) -> &'static str {
+            "identity"
         }
     }
 
@@ -133,10 +236,23 @@ mod tests {
         let compressor = TestCompressor;
         let expander = TestExpander;
         let original = "test context";
-        
-        let module = MemoryModule::new(original, &compressor).await.unwrap();
+
+        let module = MemoryModule::new(original, &compressor, Some(vec!["demo".into()]))
+            .await
+            .unwrap();
         let expanded = module.expand(&expander).await.unwrap();
-        
+
         assert_eq!(original, expanded);
+        assert_eq!(module.algorithm(), "identity");
+        assert_eq!(
+            module.schema_version(),
+            MemoryMetadata::CURRENT_SCHEMA_VERSION
+        );
+        assert_eq!(module.user_tags(), Some(["demo".to_string()].as_slice()));
+
+        // Ensure mismatched expander is rejected based on metadata
+        let zlib_expander = ZlibExpander;
+        let err = module.expand(&zlib_expander).await.unwrap_err();
+        assert!(format!("{}", err).contains("cannot expand algorithm"));
     }
 }
