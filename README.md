@@ -21,6 +21,10 @@ Add to your `Cargo.toml`:
 llm-streamliner = "0.1"
 ```
 
+## Toolchain
+
+The crate targets the Rust **2021 edition** and is tested on the stable channel. Our CI runs `cargo test`, `clippy`, and `fmt` using stable Rust, while the optional benchmark workflow uses nightly only for the built-in benchmark harness.
+
 ## Usage
 
 ```rust
