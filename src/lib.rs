@@ -91,12 +91,11 @@ impl MemoryModule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::test;
 
     struct TestCompressor;
     struct TestExpander;
 
-    #[test]
+    #[tokio::test]
     async fn test_zlib_implementation() {
         let compressor = ZlibCompressor;
         let expander = ZlibExpander;
@@ -129,7 +128,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tokio::test]
     async fn test_memory_module_roundtrip() {
         let compressor = TestCompressor;
         let expander = TestExpander;
