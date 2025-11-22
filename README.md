@@ -9,7 +9,7 @@ A Rust SDK for compressing LLM context into expandable memory modules, solving c
 
 - **Incremental Compression**: Compress large contexts into compact memory modules
 - **On-Demand Expansion**: Reconstruct original content when needed
-- **Multiple Algorithms**: Support for various compression backends (currently Zlib)
+- **Multiple Algorithms**: Support for various compression backends (Zlib by default, optional Gzip and LZ4)
 - **Serialization**: Save/load compressed modules
 - **Async Ready**: Designed for async workflows
 
@@ -65,6 +65,8 @@ Enable features in Cargo.toml:
 ```toml
 llm-streamliner = { version = "0.1", features = ["gzip"] }
 ```
+
+`GzipCompressor`/`GzipExpander` and `Lz4Compressor`/`Lz4Expander` are only available when their corresponding feature flags are enabled.
 
 ## Benchmarks
 

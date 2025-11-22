@@ -1,13 +1,17 @@
 //! LLM-Streamliner: Incremental compression/expansion pipelines for LLM contexts
-//! 
+//!
 //! Provides traits and implementations for compressing LLM context into memory modules
 //! that can be efficiently stored and expanded when needed.
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use serde::{Serialize, Deserialize};
 
 pub mod compression;
 
+#[cfg(feature = "gzip")]
+pub use compression::{GzipCompressor, GzipExpander};
+#[cfg(feature = "lz4")]
+pub use compression::{Lz4Compressor, Lz4Expander};
 pub use compression::{ZlibCompressor, ZlibExpander};
 
 /// Error type for compression/expansion operations
@@ -29,7 +33,10 @@ pub trait Compressor {
     /// * `context` - The text context to compress
     /// # Returns
     /// Binary representation of the compressed text or error
-    async fn compress(&'async_trait self, context: &'async_trait str) -> Result<Vec<u8>, StreamlinerError>;
+    async fn compress(
+        &'async_trait self,
+        context: &'async_trait str,
+    ) -> Result<Vec<u8>, StreamlinerError>;
 }
 
 /// Trait for expanding binary representations back into text
@@ -40,7 +47,10 @@ pub trait Expander {
     /// * `compressed` - The compressed binary data
     /// # Returns
     /// The original text or error
-    async fn expand(&'async_trait self, compressed: &'async_trait [u8]) -> Result<String, StreamlinerError>;
+    async fn expand(
+        &'async_trait self,
+        compressed: &'async_trait [u8],
+    ) -> Result<String, StreamlinerError>;
 }
 
 /// Compressed memory module containing context and metadata
@@ -54,7 +64,10 @@ pub struct MemoryModule {
 
 impl MemoryModule {
     /// Creates a new MemoryModule by compressing the given context
-    pub async fn new(context: &str, compressor: &impl Compressor) -> Result<Self, StreamlinerError> {
+    pub async fn new(
+        context: &str,
+        compressor: &impl Compressor,
+    ) -> Result<Self, StreamlinerError> {
         let compressed_data = compressor.compress(context).await?;
         Ok(Self {
             compressed_data,
@@ -100,12 +113,12 @@ mod tests {
         let compressor = ZlibCompressor;
         let expander = ZlibExpander;
         let original = "This is a longer test string to verify zlib compression works properly";
-        
+
         let module = MemoryModule::new(original, &compressor).await.unwrap();
         let expanded = module.expand(&expander).await.unwrap();
-        
+
         assert_eq!(original, expanded);
-        
+
         // Verify serialization roundtrip
         let json = module.to_json().unwrap();
         let deserialized = MemoryModule::from_json(&json).unwrap();
@@ -115,16 +128,23 @@ mod tests {
 
     #[async_trait::async_trait]
     impl Compressor for TestCompressor {
-        async fn compress(&'async_trait self, context: &'async_trait str) -> Result<Vec<u8>, StreamlinerError> {
+        async fn compress(
+            &'async_trait self,
+            context: &'async_trait str,
+        ) -> Result<Vec<u8>, StreamlinerError> {
             Ok(context.as_bytes().to_vec())
         }
     }
 
     #[async_trait::async_trait]
     impl Expander for TestExpander {
-        async fn expand(&'async_trait self, compressed: &'async_trait [u8]) -> Result<String, StreamlinerError> {
-            String::from_utf8(compressed.to_vec())
-                .map_err(|e| StreamlinerError::ExpansionError(format!("UTF-8 conversion failed: {}", e)))
+        async fn expand(
+            &'async_trait self,
+            compressed: &'async_trait [u8],
+        ) -> Result<String, StreamlinerError> {
+            String::from_utf8(compressed.to_vec()).map_err(|e| {
+                StreamlinerError::ExpansionError(format!("UTF-8 conversion failed: {}", e))
+            })
         }
     }
 
@@ -133,10 +153,10 @@ mod tests {
         let compressor = TestCompressor;
         let expander = TestExpander;
         let original = "test context";
-        
+
         let module = MemoryModule::new(original, &compressor).await.unwrap();
         let expanded = module.expand(&expander).await.unwrap();
-        
+
         assert_eq!(original, expanded);
     }
 }
