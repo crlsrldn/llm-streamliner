@@ -19,6 +19,8 @@ pub enum StreamlinerError {
     ExpansionError(String),
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
+    #[error("Unsupported schema version: {0}")]
+    UnsupportedSchemaVersion(u32),
 }
 
 /// Trait for compressing text into binary representations
@@ -61,6 +63,7 @@ pub struct MemoryMetadata {
     /// Compression algorithm name (e.g., "zlib")
     algorithm: String,
     /// Schema version to support future evolution of the format
+    #[serde(default = "MemoryMetadata::current_schema_version")]
     schema_version: u32,
     /// Optional user-provided tags for discoverability
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -69,6 +72,10 @@ pub struct MemoryMetadata {
 
 impl MemoryMetadata {
     pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+
+    const fn current_schema_version() -> u32 {
+        Self::CURRENT_SCHEMA_VERSION
+    }
 
     pub fn new(algorithm: String, user_tags: Option<Vec<String>>) -> Self {
         Self {
@@ -92,7 +99,7 @@ impl MemoryMetadata {
 }
 
 /// Compressed memory module containing context and metadata
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct MemoryModule {
     /// The compressed data bytes
     compressed_data: Vec<u8>,
@@ -133,7 +140,13 @@ impl MemoryModule {
 
     /// Deserializes a module from a JSON string
     pub fn from_json(json: &str) -> Result<Self, StreamlinerError> {
-        serde_json::from_str(json).map_err(Into::into)
+        let module: Self = serde_json::from_str(json)?;
+        if module.metadata.schema_version != MemoryMetadata::CURRENT_SCHEMA_VERSION {
+            return Err(StreamlinerError::UnsupportedSchemaVersion(
+                module.metadata.schema_version,
+            ));
+        }
+        Ok(module)
     }
 
     /// Gets metadata about the compression
@@ -165,6 +178,7 @@ impl MemoryModule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     struct TestCompressor;
     struct TestExpander;
@@ -254,5 +268,43 @@ mod tests {
         let zlib_expander = ZlibExpander;
         let err = module.expand(&zlib_expander).await.unwrap_err();
         assert!(format!("{}", err).contains("cannot expand algorithm"));
+    }
+
+    #[tokio::test]
+    async fn test_schema_version_defaults_and_validation() {
+        let compressor = TestCompressor;
+        let module = MemoryModule::new("context", &compressor, None)
+            .await
+            .unwrap();
+
+        // Simulate a legacy payload with no schema_version and ensure defaulting works
+        let mut value = serde_json::to_value(&module).unwrap();
+        let metadata = value
+            .get_mut("metadata")
+            .and_then(Value::as_object_mut)
+            .expect("metadata object present");
+        metadata.remove("schema_version");
+
+        let legacy_json = serde_json::to_string(&value).unwrap();
+        let deserialized = MemoryModule::from_json(&legacy_json).unwrap();
+        assert_eq!(
+            deserialized.schema_version(),
+            MemoryMetadata::CURRENT_SCHEMA_VERSION
+        );
+
+        // Reject future schema versions
+        let mut future_value = serde_json::to_value(&module).unwrap();
+        let future_metadata = future_value
+            .get_mut("metadata")
+            .and_then(Value::as_object_mut)
+            .expect("metadata object present");
+        future_metadata.insert(
+            "schema_version".to_string(),
+            (MemoryMetadata::CURRENT_SCHEMA_VERSION + 1).into(),
+        );
+
+        let future_json = serde_json::to_string(&future_value).unwrap();
+        let err = MemoryModule::from_json(&future_json).unwrap_err();
+        assert!(matches!(err, StreamlinerError::UnsupportedSchemaVersion(_)));
     }
 }
