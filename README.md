@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Compress context
     let context = "Your large LLM context here...";
     let compressor = ZlibCompressor;
-    let module = MemoryModule::new(context, &compressor).await?;
+    let module = MemoryModule::new(context, &compressor, None).await?;
     
     // Serialize
     let json = module.to_json()?;
