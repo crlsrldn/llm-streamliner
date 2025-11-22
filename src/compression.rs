@@ -31,9 +31,8 @@ impl Expander for ZlibExpander {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::test;
 
-    #[test]
+    #[tokio::test]
     async fn test_zlib_roundtrip() {
         let compressor = ZlibCompressor;
         let expander = ZlibExpander;
