@@ -28,6 +28,8 @@ use thiserror::Error;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+use crate::MemoryModule;
+
 #[derive(Error, Debug)]
 pub enum StorageError {
     #[error("IO error: {0}")]
@@ -95,6 +97,35 @@ pub async fn retrieve_module(path: &Path) -> Result<Vec<u8>, StorageError> {
     Ok(buffer)
 }
 
+/// Stores a `MemoryModule` as JSON on disk
+///
+/// # Arguments
+/// * `path` - Filesystem path where the module should be stored
+/// * `module` - MemoryModule instance to serialize and store
+///
+/// # Errors
+/// Returns `StorageError` if the file cannot be created or serialization/writing fails.
+pub async fn store_memory_module(path: &Path, module: &MemoryModule) -> Result<(), StorageError> {
+    let json = module.to_json()?;
+    let mut file = fs::File::create(path).await?;
+    file.write_all(json.as_bytes()).await?;
+    Ok(())
+}
+
+/// Loads a `MemoryModule` from JSON stored on disk
+///
+/// # Arguments
+/// * `path` - Filesystem path where the module is stored
+///
+/// # Errors
+/// Returns `StorageError` if the file cannot be opened, read, or deserialized.
+pub async fn load_memory_module(path: &Path) -> Result<MemoryModule, StorageError> {
+    let mut file = fs::File::open(path).await?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).await?;
+    MemoryModule::from_json(&contents).map_err(Into::into)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,5 +141,22 @@ mod tests {
         let retrieved = retrieve_module(path).await.unwrap();
 
         assert_eq!(test_data.as_slice(), retrieved);
+    }
+
+    #[tokio::test]
+    async fn test_memory_module_storage_roundtrip() {
+        let compressor = crate::ZlibCompressor;
+        let expander = crate::ZlibExpander;
+        let original = "disk storage module test";
+
+        let module = MemoryModule::new(original, &compressor).await.unwrap();
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        store_memory_module(path, &module).await.unwrap();
+        let loaded = load_memory_module(path).await.unwrap();
+
+        let expanded = loaded.expand(&expander).await.unwrap();
+        assert_eq!(original, expanded);
     }
 }
